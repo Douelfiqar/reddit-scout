@@ -11,7 +11,7 @@ Once a day, a short list (up to 10) of fresh Reddit posts where a job seeker ask
 
 1. Install Node 20 or newer.
 2. `copy .env.example .env` (Windows) or `cp .env.example .env`, then fill in:
-   - `OPENAI_API_KEY`: from https://platform.openai.com/api-keys
+   - `OPENAI_API_KEY`: from https://platform.openai.com/api-keys, or an OpenRouter key (`sk-or-…`) with `OPENAI_BASE_URL=https://openrouter.ai/api/v1` and an OpenRouter `MODEL` such as `openai/gpt-4o-mini`
    - Email (optional, free): make a https://resend.com account, create an API key and set `RESEND_API_KEY`. Set `DIGEST_TO` to the address you signed up with. Without your own domain, Resend's test sender only delivers to that address.
 3. Try it:
    - `node scout.mjs --no-ai`: rules only, free. Prints the posts that would go to the AI.
@@ -21,6 +21,8 @@ Once a day, a short list (up to 10) of fresh Reddit posts where a job seeker ask
 A run takes **about 20 minutes**. Reddit lets an anonymous reader make about one request a minute (`x-ratelimit-remaining: 0` after a single call), so the script waits 65 s between requests: 7 subreddits plus up to 14 comment pages.
 
 ## Run it every day
+
+**How it runs today:** on an InstaBox cloud machine, woken daily by a GitHub Action in this repo. **See [HOSTING.md](HOSTING.md)** for how that works and how to operate it. The options below are for running it on your own computer or server instead.
 
 **Windows (Task Scheduler).** Run this once in a terminal, replacing the path with this folder's path:
 
@@ -32,7 +34,7 @@ At 14:00 Paris time it is 8:00 in New York, when overnight US posts are fresh. T
 
 **A Linux server (cron).** `30 12 * * * cd /path/to/reddit-scout && /usr/bin/node scout.mjs >> scout.log 2>&1`
 
-GitHub Actions or other cloud runners are untested. Reddit often refuses data-centre addresses: its `.json` endpoints already answer 403 to servers, while its RSS answered 200 from both a VPS and a home connection on 12 Nov 2026.
+Running the scout directly on GitHub Actions or other cloud runners is untested (the Action in this repo only wakes the InstaBox machine). Reddit often refuses data-centre addresses: its `.json` endpoints already answer 403 to servers, while its RSS answered 200 from both a VPS and a home connection on 12 Nov 2026.
 
 ## What to edit
 
