@@ -2,12 +2,15 @@
   "name": "reddit-scout",
   "version": "0.1.0",
   "private": true,
-  "description": "Daily digest of fresh Reddit job-search questions with drafted replies, posted by hand. Read-only.",
+  "description": "Daily digest of fresh Reddit job-search questions with drafted replies, reviewed on a local page and posted by hand. Read-only on Reddit.",
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
     "scout": "node scout.mjs",
     "dry-run": "node scout.mjs --dry-run",
-    "rules": "node scout.mjs --no-ai"
+    "rules": "node scout.mjs --no-ai",
+    "serve": "node server.mjs",
+    "review": "node review.mjs",
+    "review:push": "node review.mjs --push"
   }
 }

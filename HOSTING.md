@@ -83,12 +83,64 @@ Never overwrite the machine's `.env` or its `data/` folder: they hold your key, 
   `sed -i 's|^OPENAI_API_KEY=.*|OPENAI_API_KEY=NEW_KEY|' ~/reddit-scout/.env`
 - InstaBox: create a new key in the dashboard (or `npx instabox@latest keys create --name scout`), paste it into the GitHub secret `INSTABOX_API_KEY`, then delete the old key.
 
+## The review page (server.mjs)
+
+**On InstaBox it cannot stay online.** The machine suspends itself after 30 minutes without activity (`autoSuspendAfterSeconds: 1800`), each run is capped (`maxRunMinutes: 480`), and it has no public port, so nothing outside the machine can open the page. A process manager doesn't change that: when the machine sleeps, every process on it stops. Use the HTML digest there, as today.
+
+**Review on your own computer instead: `npm run review`.** One command does the round trip:
+
+1. wakes the machine and pulls its `digests/*.json` (new days, plus the newest again) and `data/replied.json` into this folder. Decisions already here that were never sent are kept.
+2. starts `server.mjs` here, on 127.0.0.1 only, and opens http://127.0.0.1:8787 in your browser.
+3. when you press **Ctrl+C**, wakes the machine again if it fell asleep and writes your `data/replied.json` to `~/reddit-scout/data/`, so the next scout run skips every post you approved or skipped.
+
+It needs `INSTABOX_API_KEY` in your local `.env`: the same `ibk_…` key as the GitHub secret, or a new one from the dashboard. `INSTABOX_MACHINE` changes the machine name (default `reddit`). It goes through InstaBox's API, like the GitHub Action, so no CLI, `scp` or SSH is needed.
+
+If sending fails (no network, expired key), your decisions stay in the local file: `npm run review:push` sends them later. Only that file goes up; the machine's `.env`, `seen.json` and cost log are never touched.
+
+### On an always-on VPS (systemd)
+
+For a server that never sleeps, `deploy/` holds three systemd units that replace both the GitHub Action and cron:
+
+| File | What it does |
+|---|---|
+| `deploy/reddit-scout-server.service` | runs `server.mjs` permanently; restarts it 5 s after a crash and starts it at boot |
+| `deploy/reddit-scout.service` | one scout run (`scout.mjs`), up to 2 h |
+| `deploy/reddit-scout.timer` | starts that run every day at 13:00 UTC, or at boot if the server was off then |
+
+Both run as an ordinary user (`scout` in the files) with a read-only system. They can write only to `data/` (and the scout also to `digests/`), so they share `data/replied.json`. Install, once, as root:
+
+```
+# 1. The code in /home/scout/reddit-scout, with its .env (copy .env.example). Edit User= and the paths in deploy/*.service if yours differ.
+mkdir -p /home/scout/reddit-scout/data /home/scout/reddit-scout/digests
+# 2. Node 20+ in /usr/bin or /usr/local/bin (systemd does not see an nvm install; then put its full path in ExecStart=).
+cp /home/scout/reddit-scout/deploy/reddit-scout*.service /home/scout/reddit-scout/deploy/reddit-scout.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now reddit-scout-server.service reddit-scout.timer
+```
+
+Check them:
+
+```
+systemctl status reddit-scout-server     # should say active (running)
+systemctl list-timers reddit-scout.timer # next run time
+journalctl -u reddit-scout -n 50         # the last scout run's log
+journalctl -u reddit-scout-server -f     # the page's log, live
+systemctl start reddit-scout             # run the scout now
+```
+
+**Reaching the page.** By default the server listens on `127.0.0.1:8787`, the VPS only. The safest way to open it from your laptop is an SSH tunnel: `ssh -L 8787:127.0.0.1:8787 scout@your-vps`, then http://127.0.0.1:8787. To open it to the internet instead, set `HOST=0.0.0.0` and `DIGEST_PASSWORD` in `.env` (the server refuses to start without the password), open the port in the firewall, and put HTTPS in front (Caddy or nginx), since Basic auth over plain HTTP sends the password in the clear. After changing `.env`: `systemctl restart reddit-scout-server`.
+
+**After a code change:** copy the files, then `systemctl restart reddit-scout-server`. The scout picks up changes on its next run.
+
+Before moving the scout itself to a VPS, check that Reddit answers that server's RSS requests: `node scout.mjs --no-ai` should log posts per subreddit, not `HTTP 403` (see "The machine" above).
+
 ## When something goes wrong
 
 | What you see | Likely cause | Fix |
 |---|---|---|
 | The Action is red at "Wake the machine" | wrong or deleted `INSTABOX_API_KEY` | create a new key and update the secret |
 | The Action is green, but there's no digest that day | the run failed on the machine | read `~/scout-<date>.log` |
+| The review page does not open | InstaBox: use `npm run review` on your computer. VPS: the service is down or the port is closed | `systemctl status reddit-scout-server`, `journalctl -u reddit-scout-server -n 30`, and the tunnel or firewall |
 | `HTTP 403` from Reddit in the log | Reddit refused the RSS | see the README, "Reddit's rules": switch to the official API |
 | `OPENAI_API_KEY is missing` / `401` | the OpenRouter key is missing or revoked | put a valid key in `.env` |
 | `no price for <model>` | `MODEL` has no entry in `PRICES` | add it to `config.mjs` |
@@ -98,4 +150,4 @@ Never overwrite the machine's `.env` or its `data/` folder: they hold your key, 
 ## Ground rules (unchanged)
 
 - The scout only **reads** Reddit. It never posts, comments, votes or messages, and it has no Reddit login.
-- **You post replies yourself**, after reading and editing the draft. Keep the "I built this" disclosure whenever FutuRole is mentioned, and follow each subreddit's self-promotion rules.
+- **You post replies yourself**, after reading and editing the draft. The review page only copies the text, opens the thread and records your decision. Keep the "I built this" disclosure whenever FutuRole is mentioned, and follow each subreddit's self-promotion rules.

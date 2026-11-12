@@ -5,7 +5,8 @@ Once a day, a short list (up to 10) of fresh Reddit posts where a job seeker ask
 - **Read-only.** It only GETs Reddit's public RSS feeds. It never posts, comments, votes or sends messages, and it has no Reddit login.
 - **Cheap.** Plain rules filter first, then one AI call a day (about $0.005 on gpt-5.6-luna), with a hard daily cap (`DAILY_BUDGET_USD`, default $0.05). Every call is logged in `data/costs.csv`.
 - **No product push.** The drafts never name a product. The only mention is one fixed, honest sentence about the free ATS checker (it says you built it). Code adds it to at most 1 draft in 3, only where the AI says it fits.
-- **No dependencies.** One file, `scout.mjs`, on Node 20 or newer.
+- **Review page.** `node server.mjs` shows the digest with each draft in an editable box. **Approve & copy** copies your reply, opens the thread, and records the post in `data/replied.json` so it never comes back. You paste and press Reply yourself.
+- **No dependencies.** Node 20 or newer, nothing to install.
 
 ## Setup (5 minutes)
 
@@ -36,6 +37,22 @@ At 14:00 Paris time it is 8:00 in New York, when overnight US posts are fresh. T
 
 Running the scout directly on GitHub Actions or other cloud runners is untested (the Action in this repo only wakes the InstaBox machine). Reddit often refuses data-centre addresses: its `.json` endpoints already answer 403 to servers, while its RSS answered 200 from both a VPS and a home connection on 12 Nov 2026.
 
+## Review and reply
+
+```
+node server.mjs
+```
+
+Open http://127.0.0.1:8787. It shows the newest digest (pick another day in the menu) with every post's draft in a text box.
+
+- **Approve & copy**: copies the text as you edited it, opens the thread in a new tab and records the post as answered. Paste it in Reddit's comment box and press Reply.
+- **Skip**: records the post so the scout never shows it again.
+- **Undo**: clears a decision made by mistake.
+
+The page never posts to Reddit: it has no Reddit login. Replies go out from your own browser session, typed or pasted by you. A post can be approved only once (`data/replied.json`), and the scout leaves out every post in that file.
+
+On a VPS, set `HOST=0.0.0.0` and `DIGEST_PASSWORD` in `.env` (the server refuses to start on the network without it), and prefer HTTPS in front of it.
+
 ## What to edit
 
 `config.mjs` holds everything as plain data:
@@ -61,16 +78,20 @@ The AI instructions are `SYSTEM` in `scout.mjs`.
 ## Reddit's rules
 
 - It reads Reddit's public RSS feeds at under 30 requests a day, one at a time, with an honest User-Agent (`script:reddit-scout:0.1`) and no personal data. It stores only post ids, for 30 days.
-- Replies are posted by a person, by hand. Many subreddits ban self-promotion or limit it (a common rule of thumb: at most 1 in 10 of your posts about your own product). Read each subreddit's rules, and keep the disclosure in the scanner line.
+- Replies are posted by a person, by hand: the review page copies the text and opens the thread, nothing more. Many subreddits ban self-promotion or limit it (a common rule of thumb: at most 1 in 10 of your posts about your own product). Read each subreddit's rules, and keep the disclosure in the scanner line.
 - If Reddit ever refuses the RSS (`HTTP 403` in `scout.log`), the allowed route is the official API. Register a "script" app at https://www.reddit.com/prefs/apps (you get a client id and a secret; no password is needed for read-only app access) and read through OAuth under Reddit's Data API terms. That would need a small change to `createReader()`.
 
 ## Files
 
 | File | Holds |
 |---|---|
-| `scout.mjs` | the whole script |
+| `scout.mjs` | the scout |
+| `server.mjs` | the review page (`node server.mjs`) |
+| `commenter.mjs` | `data/replied.json` and the review actions |
+| `review.mjs` | `npm run review`: pull from InstaBox, review here, send decisions back (HOSTING.md) |
 | `config.mjs` | the lists and limits |
 | `.env` | your keys (never committed) |
 | `data/seen.json` | posts already shown (30 days) |
 | `data/costs.csv` | every AI call: tokens and dollars |
-| `digests/` | one HTML digest per day; open it on your phone or in a browser |
+| `data/replied.json` | posts approved or skipped in the review page |
+| `digests/` | one HTML digest per day (open it anywhere) and its `.json` twin for the review page |

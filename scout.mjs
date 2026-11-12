@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 import {
   SUBREDDITS, TOPICS, EXCLUDE, NON_US_MARKET, QUESTION, LIMITS, SCANNER_LINE, USER_AGENT, PRICES,
 } from './config.mjs'
+import { loadEnv, readReplied } from './commenter.mjs'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const DATA = path.join(ROOT, 'data')
@@ -24,18 +25,6 @@ const noAi = args.has('--no-ai')
 const force = args.has('--force')
 const log = line => console.log(`[${new Date().toISOString()}] ${line}`)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-
-// ── .env (tiny loader, no dependency; real environment variables win) ────────────────────────
-function loadEnv() {
-  const file = path.join(ROOT, '.env')
-  if (!existsSync(file)) return
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)
-    if (!m || line.trimStart().startsWith('#')) continue
-    const value = m[2].replace(/^(['"])(.*)\1$/, '$2')
-    if (process.env[m[1]] === undefined) process.env[m[1]] = value
-  }
-}
 
 // ── Reddit RSS ───────────────────────────────────────────────────────────────────────────────
 // Reddit's .json endpoints answer 403 to anonymous servers (checked 12 Nov 2026); its public RSS
@@ -336,8 +325,9 @@ async function main() {
     log(`r/${sub}: ${got.length} posts`)
     posts.push(...got)
   }
+  // Posts shown in the last 30 days, and every post approved or skipped in the review server.
   const seen = readSeen(now)
-  const ranked = pickFinalists(posts, seen, now)
+  const ranked = pickFinalists(posts, { ...readReplied(), ...seen }, now)
   log(`${posts.length} read, ${ranked.length} finalists after the rules`)
 
   const finalists = []
@@ -362,6 +352,15 @@ async function main() {
   if (items.length === 0) return
 
   const digest = buildDigest(items, { day, scanned: posts.length, cost })
+  // The same items as data, for the review server (node server.mjs).
+  const review = {
+    day: dryRun ? `${day}-dry-run` : day, scanned: posts.length, cost, items: items.map(it => ({
+      id: it.post.id, subreddit: it.post.subreddit, url: it.post.url, title: it.post.title,
+      body: clip(it.post.body, 2000), publishedAt: it.post.publishedAt.toISOString(),
+      why: it.why, draft: it.draft, mentionsScanner: it.mentionsScanner,
+    })),
+  }
+  writeFileSync(path.join(DIGESTS, `${review.day}.json`), JSON.stringify(review, null, 1))
   if (dryRun) {
     console.log(`\n${digest.subject}\n`)
     for (const it of items) console.log(`## r/${it.post.subreddit} · ${Math.round(it.post.ageHours)} h · ${it.post.comments?.length ?? '?'} replies\n${it.post.title}\n${it.post.url}\nWhy: ${it.why}\n---\n${it.draft}\n`)

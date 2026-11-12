@@ -1,0 +1,24 @@
+# The review page (server.mjs), always on. Restarts on crash and after a reboot.
+# Install: see HOSTING.md, "On an always-on VPS". Replace /home/scout and User=scout if yours differ.
+[Unit]
+Description=Reddit scout review page (server.mjs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scout
+WorkingDirectory=/home/scout/reddit-scout
+# PORT, HOST and DIGEST_PASSWORD come from .env in that folder (server.mjs reads it).
+ExecStart=/usr/bin/env node server.mjs
+Restart=always
+RestartSec=5
+# It only needs to write data/replied.json.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/scout/reddit-scout/data
+
+[Install]
+WantedBy=multi-user.target

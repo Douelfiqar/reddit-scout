@@ -1,0 +1,18 @@
+# One scout run (scout.mjs), started each day by reddit-scout.timer. Runs about 20-25 minutes.
+[Unit]
+Description=Reddit scout daily run (scout.mjs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=scout
+WorkingDirectory=/home/scout/reddit-scout
+ExecStart=/usr/bin/env node scout.mjs
+TimeoutStartSec=2h
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# It writes data/ (seen posts, cost log) and digests/ (the HTML and the JSON the page reads).
+ReadWritePaths=/home/scout/reddit-scout/data /home/scout/reddit-scout/digests
