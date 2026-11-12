@@ -245,7 +245,7 @@ async function draftReplies(finalists, budgetLeftUsd) {
     response_format: { type: 'json_schema', json_schema: { name: 'reddit_scout', strict: true, schema: SCHEMA } },
     ...(reasoning ? { max_completion_tokens: LIMITS.maxOutputTokens, reasoning_effort: 'low' } : { max_tokens: LIMITS.maxOutputTokens, temperature: 0.6 }),
   }
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(`${(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
