@@ -1,0 +1,13 @@
+{
+  "name": "reddit-scout",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Daily digest of fresh Reddit job-search questions with drafted replies, posted by hand. Read-only.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "scout": "node scout.mjs",
+    "dry-run": "node scout.mjs --dry-run",
+    "rules": "node scout.mjs --no-ai"
+  }
+}
