@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-// Reddit scout: fresh job-search questions from a few subreddits, a drafted reply for each, in a
-// daily digest the owner reads on the phone and answers BY HAND. Read-only on Reddit.
-//
-//   node scout.mjs            full run: digest file + email (if set up)
-//   node scout.mjs --dry-run  print the digest; no email, nothing remembered (still one AI call)
-//   node scout.mjs --no-ai    stop after the plain rules and print the finalists (free)
-//   node scout.mjs --force    run although today's digest was already made
-//
-// A run takes about 20 minutes: Reddit lets an anonymous reader make about one request a minute.
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,9 +17,6 @@ const force = args.has('--force')
 const log = line => console.log(`[${new Date().toISOString()}] ${line}`)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-// ── Reddit RSS ───────────────────────────────────────────────────────────────────────────────
-// Reddit's .json endpoints answer 403 to anonymous servers (checked 12 Nov 2026); its public RSS
-// (Atom) feeds answer 200. GET only, serial, spaced, capped.
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
 function decodeEntities(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, code) => {
@@ -112,7 +100,6 @@ function createReader() {
   }
 }
 
-// ── Plain rules (no AI) ──────────────────────────────────────────────────────────────────────
 function rankPost(post, now) {
   const ageHours = (now - post.publishedAt) / 3_600_000
   if (ageHours < 0 || ageHours > LIMITS.maxAgeHours) return null
@@ -144,7 +131,6 @@ function pickFinalists(posts, seen, now) {
   return out
 }
 
-// ── AI: one call a day ───────────────────────────────────────────────────────────────────────
 const SYSTEM = `You help a job seeker who answers Reddit questions from their own account. For each post, decide whether it is worth answering and, if it is, draft the reply they will post by hand.
 
 Keep a post (keep=true) when it asks something about the job search (getting interviews, resumes, ATS, tailoring to a job, cover letters, rejections, follow-ups, gaps, career moves) and a short, practical answer would help, unless the comments shown already give that answer. Most posts given to you passed a filter: expect to keep most of them. Skip only rants with no question, requests for a referral or a job, posts outside the job search, and posts already answered well.
@@ -180,7 +166,6 @@ function buildUserPrompt(finalists) {
   }).join('\n\n')
 }
 
-/** A draft must not link or name anything: drop any sentence that does. */
 function cleanDraft(draft) {
   return draft.replace(/\r/g, '').split('\n')
     .map(line => line.split(/(?<=[.!?])\s+/).filter(s => !/https?:\/\/|www\.|\bfuturole\b|\.com\b/i.test(s)).join(' ').replace(/\*\*/g, '').replace(/(?<!\d)\s*[—–]\s*(?!\d)/g, ', '))
@@ -192,7 +177,6 @@ function costUsd(model, inputTokens, outputTokens) {
   return p ? (inputTokens * p.input + outputTokens * p.output) / 1e6 : null
 }
 
-/** Keep, clean, cap at the digest size, and give the fixed scanner line to at most one item in three. */
 function assembleDigest(finalists, parsed) {
   if (!Array.isArray(parsed?.items)) return []
   const byId = new Map(finalists.map(p => [p.id, p]))
@@ -222,7 +206,6 @@ async function draftReplies(finalists, budgetLeftUsd) {
   if (!apiKey) throw new Error('OPENAI_API_KEY is missing in .env')
   if (!PRICES[model]) throw new Error(`no price for ${model} in config.mjs PRICES: add it so the daily cap can hold`)
   let list = finalists
-  // The cap holds before the call: drop the lowest-ranked posts until the worst case fits.
   const worst = l => costUsd(model, Math.ceil((SYSTEM.length + buildUserPrompt(l).length) / 3.5), LIMITS.maxOutputTokens)
   while (list.length > 0 && worst(list) > budgetLeftUsd) list = list.slice(0, -1)
   if (list.length === 0) { log(`budget left $${budgetLeftUsd.toFixed(4)} is too small for one call; no AI call`); return { items: [], cost: 0, model } }
@@ -245,11 +228,10 @@ async function draftReplies(finalists, budgetLeftUsd) {
   const usage = json.usage ?? {}
   const cost = costUsd(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0)
   let parsed = null
-  try { parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '') } catch { /* empty digest */ }
+  try { parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '') } catch { }
   return { items: assembleDigest(list, parsed), cost, model, usage }
 }
 
-// ── Local state: seen posts and the cost log ─────────────────────────────────────────────────
 const SEEN_FILE = path.join(DATA, 'seen.json')
 const COST_FILE = path.join(DATA, 'costs.csv')
 function readSeen(now) {
@@ -269,7 +251,6 @@ function recordCost(day, model, usage, cost, items) {
   appendFileSync(COST_FILE, `${day},${new Date().toISOString().slice(11, 19)},${model},${(usage?.prompt_tokens ?? 0)}+${(usage?.completion_tokens ?? 0)},${(cost ?? 0).toFixed(6)},${items}\n`)
 }
 
-// ── The digest: an HTML file every run, emailed when Resend is set up ────────────────────────
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 function buildDigest(items, { day, scanned, cost }) {
   const subject = `Reddit scout: ${items.length} ${items.length === 1 ? 'post' : 'posts'} to answer (${day})`
@@ -306,7 +287,6 @@ async function sendEmail({ subject, html }) {
   return true
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────────────────────
 async function main() {
   loadEnv()
   mkdirSync(DATA, { recursive: true })
@@ -325,7 +305,6 @@ async function main() {
     log(`r/${sub}: ${got.length} posts`)
     posts.push(...got)
   }
-  // Posts shown in the last 30 days, and every post approved or skipped in the review server.
   const seen = readSeen(now)
   const ranked = pickFinalists(posts, { ...readReplied(), ...seen }, now)
   log(`${posts.length} read, ${ranked.length} finalists after the rules`)
@@ -352,7 +331,6 @@ async function main() {
   if (items.length === 0) return
 
   const digest = buildDigest(items, { day, scanned: posts.length, cost })
-  // The same items as data, for the review server (node server.mjs).
   const review = {
     day: dryRun ? `${day}-dry-run` : day, scanned: posts.length, cost, items: items.map(it => ({
       id: it.post.id, subreddit: it.post.subreddit, url: it.post.url, title: it.post.title,

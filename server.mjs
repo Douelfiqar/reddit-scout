@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-// Review server: shows a digest's posts with the drafted reply in an editable box.
-//
-//   node server.mjs        http://127.0.0.1:8787 (PORT and HOST in .env)
-//
-// Approve & copy: copies your edited reply, opens the thread in a new tab, and records the post in
-// data/replied.json. You paste and press Reply on Reddit yourself, from your own session.
-// Skip: records it too, so it never comes back. Nothing is ever sent to Reddit from here.
-//
-// On a VPS (HOST=0.0.0.0) set DIGEST_PASSWORD: the browser then asks for it (any user name).
 import http from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { loadEnv, listDays, readDay, readReplied, decide, undo } from './commenter.mjs'
@@ -102,8 +93,8 @@ document.addEventListener('click', async e => {
   const lock = on => card.querySelectorAll('button,textarea').forEach(el => { el.disabled = on })
   if (e.target.matches('.approve')) {
     if (!textarea.value.trim()) return setStatus('The reply is empty.', true)
-    const copied = copy(textarea)          // inside the click, so the browser allows it
-    const tab = window.open('', '_blank')  // same: opened now, pointed at the thread once recorded
+    const copied = copy(textarea)
+    const tab = window.open('', '_blank')
     lock(true)
     try {
       await call('/api/reply', { day: DAY, id: card.dataset.id, action: 'approve', text: textarea.value })
@@ -160,7 +151,6 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, 'text/html; charset=utf-8', page(day, day && readDay(day), readReplied()))
     }
     if (req.method === 'POST' && (url.pathname === '/api/reply' || url.pathname === '/api/undo')) {
-      // Only this page may call the API: same-origin JSON, so another site cannot record for you.
       const origin = req.headers.origin
       if (origin && new URL(origin).host !== req.headers.host) return sendJson(res, { status: 403, body: { error: 'cross-site request' } })
       if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return sendJson(res, { status: 415, body: { error: 'send JSON' } })

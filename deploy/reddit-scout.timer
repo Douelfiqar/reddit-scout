@@ -1,5 +1,3 @@
-# Starts reddit-scout.service every day at 13:00 UTC (same time as the GitHub Action),
-# and as soon as possible after boot if the server was off at that time.
 [Unit]
 Description=Daily Reddit scout run
 

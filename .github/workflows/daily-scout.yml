@@ -1,11 +1,8 @@
 name: Daily Reddit scout
 
-# Wakes the InstaBox machine "reddit" and starts the scout there in the background.
-# The job itself only makes a few API calls (about 15 seconds, billed as 1 minute a day);
-# the scout runs about 20 minutes on the machine, reading Reddit's public RSS feeds.
 on:
   schedule:
-    - cron: '0 13 * * *'   # 13:00 UTC = 14:00 Paris (winter time)
+    - cron: '0 13 * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -25,7 +22,6 @@ jobs:
               -H 'Accept: application/json, text/event-stream' \
               -d "$1"
           }
-          # Resume (no harm if it is already running), then start the scout detached.
           call '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"resume_machine","arguments":{"machine":"reddit","wait_seconds":120}}}' | head -c 300; echo
           call '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"exec","arguments":{"machine":"reddit","cmd":"cd ~/reddit-scout && git pull -q --ff-only || true; nohup node scout.mjs > ~/scout-$(date +%F).log 2>&1 & echo started","timeout_seconds":30}}}' | tee /tmp/out.txt | head -c 400; echo
           grep -q started /tmp/out.txt
