@@ -66,4 +66,6 @@ export const PRICES = {
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
   'gpt-5-mini': { input: 0.25, output: 2.0 },
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+  // OpenRouter names (provider/model), same per-million-token prices as the provider's own.
+  'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
 }
