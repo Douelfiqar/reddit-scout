@@ -11,6 +11,7 @@
     "rules": "node scout.mjs --no-ai",
     "serve": "node server.mjs",
     "review": "node review.mjs",
-    "review:push": "node review.mjs --push"
+    "review:push": "node review.mjs --push",
+    "autopilot": "node scout.mjs --autopilot"
   }
 }

@@ -43,7 +43,7 @@ export function readDay(day) {
 }
 
 export function decide({ day, id, action, text }) {
-  if (!['approve', 'skip'].includes(action)) return { status: 400, body: { error: 'action must be approve or skip' } }
+  if (!['approve', 'post', 'skip'].includes(action)) return { status: 400, body: { error: 'action must be approve, post or skip' } }
   if (!POST_ID.test(id ?? '')) return { status: 400, body: { error: 'bad post id' } }
   const digest = readDay(day)
   const item = digest?.items?.find(it => it.id === id)
@@ -52,14 +52,15 @@ export function decide({ day, id, action, text }) {
   const done = all[id]
   if (done) return { status: 409, body: { error: `already ${done.status} on ${done.at.slice(0, 10)}`, entry: done } }
   const reply = typeof text === 'string' ? text.replace(/\r/g, '').trim() : ''
-  if (action === 'approve' && reply.length < 2) return { status: 400, body: { error: 'the reply is empty' } }
+  const writesText = action === 'approve' || action === 'post'
+  if (writesText && reply.length < 2) return { status: 400, body: { error: 'the reply is empty' } }
   if (reply.length > 10_000) return { status: 400, body: { error: 'Reddit comments stop at 10,000 characters' } }
 
   const entry = {
-    status: action === 'approve' ? 'approved' : 'skipped',
+    status: action === 'skip' ? 'skipped' : action === 'post' ? 'posted' : 'approved',
     at: new Date().toISOString(),
     day, subreddit: item.subreddit, title: item.title, url: item.url,
-    ...(action === 'approve' ? { text: reply } : {}),
+    ...(writesText ? { text: reply } : {}),
   }
   all[id] = entry
   writeReplied(all)

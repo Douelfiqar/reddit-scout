@@ -23,5 +23,5 @@ jobs:
               -d "$1"
           }
           call '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"resume_machine","arguments":{"machine":"reddit","wait_seconds":120}}}' | head -c 300; echo
-          call '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"exec","arguments":{"machine":"reddit","cmd":"cd ~/reddit-scout && git pull -q --ff-only || true; nohup node scout.mjs > ~/scout-$(date +%F).log 2>&1 & echo started","timeout_seconds":30}}}' | tee /tmp/out.txt | head -c 400; echo
+          call '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"exec","arguments":{"machine":"reddit","cmd":"cd ~/reddit-scout && git pull -q --ff-only || true; nohup node scout.mjs --autopilot > ~/scout-$(date +%F).log 2>&1 & echo started","timeout_seconds":30}}}' | tee /tmp/out.txt | head -c 400; echo
           grep -q started /tmp/out.txt

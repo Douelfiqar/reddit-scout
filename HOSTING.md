@@ -35,6 +35,7 @@ OPENAI_BASE_URL=https://openrouter.ai/api/v1
 MODEL=openai/gpt-4o-mini              # must have a price in config.mjs PRICES
 DAILY_BUDGET_USD=0.05                 # hard cap per day
 # RESEND_API_KEY=...  DIGEST_TO=...   # optional: email the digest
+REDDIT_COOKIE=...                     # your Reddit session cookie: the review page's "Post to Reddit" button
 ```
 
 ## The machine (InstaBox free plan, as of 12 Nov 2026)
@@ -149,5 +150,5 @@ Before moving the scout itself to a VPS, check that Reddit answers that server's
 
 ## Ground rules (unchanged)
 
-- The scout only **reads** Reddit. It never posts, comments, votes or messages, and it has no Reddit login.
-- **You post replies yourself**, after reading and editing the draft. The review page only copies the text, opens the thread and records your decision. Keep the "I built this" disclosure whenever FutuRole is mentioned, and follow each subreddit's self-promotion rules.
+- The scout only **reads** Reddit. It never posts, comments, votes or messages, and it has no Reddit login. The only posting is the review page's **Post to Reddit** button, run by you on your own account (your cookie in `REDDIT_COOKIE`), through Reddit's API.
+- **You post replies yourself**, after reading and editing the draft. The review page either copies the text, opens the thread and records your decision (**Approve & copy**), or sends the comment straight from your account (**Post to Reddit**). Keep the "I built this" disclosure whenever FutuRole is mentioned, and follow each subreddit's self-promotion rules.

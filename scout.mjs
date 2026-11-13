@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import {
   SUBREDDITS, TOPICS, EXCLUDE, NON_US_MARKET, QUESTION, LIMITS, SCANNER_LINE, USER_AGENT, PRICES,
 } from './config.mjs'
-import { loadEnv, readReplied } from './commenter.mjs'
+import { loadEnv, readReplied, decide } from './commenter.mjs'
+import { postComment } from './poster.mjs'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const DATA = path.join(ROOT, 'data')
@@ -13,6 +14,7 @@ const DIGESTS = path.join(ROOT, 'digests')
 const args = new Set(process.argv.slice(2))
 const dryRun = args.has('--dry-run')
 const noAi = args.has('--no-ai')
+const autopilot = args.has('--autopilot')
 const force = args.has('--force')
 const log = line => console.log(`[${new Date().toISOString()}] ${line}`)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -329,6 +331,17 @@ async function main() {
   if (usage) recordCost(day, model, usage, cost, items.length)
   log(`${items.length} drafts from ${model}, cost ${cost == null ? 'unknown' : `$${cost.toFixed(4)}`} (cap $${cap}/day), ${items.filter(i => i.mentionsScanner).length} with the scanner line`)
   if (items.length === 0) return
+
+  if (autopilot && !dryRun) {
+    for (const it of items) {
+      const posted = await postComment({ id: it.post.id, text: it.draft })
+      if (!posted.ok) { log(`autopilot: could not post r/${it.post.subreddit} ${it.post.id}: ${posted.error}`); continue }
+      const result = await decide({ day, id: it.post.id, action: 'post', text: it.draft })
+      if (result.status === 200) log(`autopilot: posted comment ${posted.commentId} on ${it.post.id}`)
+      else log(`autopilot: decide failed (${result.status}) for ${it.post.id}`)
+    }
+    return
+  }
 
   const digest = buildDigest(items, { day, scanned: posts.length, cost })
   const review = {

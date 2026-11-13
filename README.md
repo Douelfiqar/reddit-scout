@@ -1,12 +1,39 @@
 # Reddit scout
 
-Once a day, a short list (up to 10) of fresh Reddit posts where a job seeker asks something you can genuinely help with: no callbacks, ATS, tailoring, cover letters, rejections. Each post comes with a drafted reply. You read the post, make the draft yours and **post it by hand** from your own account.
+Once a day, a short list (up to 10) of fresh Reddit posts where a job seeker asks something you can genuinely help with: no callbacks, ATS, tailoring, cover letters, rejections. Each post comes with a drafted reply. You read the post, make the draft yours and **post it** from your own account — either by hand from the thread, or with one click on the review page.
 
-- **Read-only.** It only GETs Reddit's public RSS feeds. It never posts, comments, votes or sends messages, and it has no Reddit login.
+- **Read-only.** It only GETs Reddit's public RSS feeds. It never posts, comments, votes or sends messages, and it has no Reddit login. (The review page's **Post to Reddit** button sends a comment from *your* account, through Reddit's API, when you press it.)
 - **Cheap.** Plain rules filter first, then one AI call a day (about $0.005 on gpt-5.6-luna), with a hard daily cap (`DAILY_BUDGET_USD`, default $0.05). Every call is logged in `data/costs.csv`.
 - **No product push.** The drafts never name a product. The only mention is one fixed, honest sentence about the free ATS checker (it says you built it). Code adds it to at most 1 draft in 3, only where the AI says it fits.
-- **Review page.** `node server.mjs` shows the digest with each draft in an editable box. **Approve & copy** copies your reply, opens the thread, and records the post in `data/replied.json` so it never comes back. You paste and press Reply yourself.
+- **Review page.** `node server.mjs` shows the digest with each draft in an editable box. **Approve & copy** copies your reply, opens the thread, and records the post in `data/replied.json` so it never comes back. **Post to Reddit** does the same with one click: it posts the comment through Reddit's API from your account, verifies it, and marks it posted. **Skip** records the post so the scout never shows it again.
+
 - **No dependencies.** Node 20 or newer, nothing to install.
+
+## Posting from your account
+
+The one-click **Post to Reddit** button on the review page needs your Reddit account cookie:
+
+1. In your browser, open the Reddit thread you want to answer.
+2. DevTools → Application → Cookies → `https://www.reddit.com` → copy the `token_v2` value (or export your cookies as text and take the `token_v2` value — it is the OAuth access token Reddit's API accepts; the `reddit_session` value is not accepted as a bearer token anymore).
+3. In the scout folder, put it in `.env` (never in chat, never committed):
+
+```
+REDDIT_COOKIE=<your reddit token_v2 value>
+```
+
+4. Restart the review server (`node server.mjs`). The button then does, per post: `POST https://oauth.reddit.com/api/comment` with your cookie as the bearer token → checks the answer for errors → fetches the created comment back to verify the body landed → marks the post as **posted** in `data/replied.json`.
+
+If Reddit refuses (bad cookie, rate limit, subreddit rule), nothing is marked: the error shows in the page's status line and you can edit + retry, or use **Approve & copy** to send it by hand.
+
+## Autopilot mode
+
+`node scout.mjs --autopilot` goes the full loop without you:
+
+1. scans the subreddits, picks the finalists, one AI call drafts the replies;
+2. posts each draft through the same verified path as the review page's **Post to Reddit** (Reddit → verify → mark posted);
+3. marks the posts answered in `data/replied.json`.
+
+Add `--autopilot` to a scheduled run (cron, Task Scheduler, or the GitHub Action) to go fully autonomous: **find the post → write the comment → post it → verify → send it**. Until the Reddit app credentials are in `.env` (`REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` / `REDDIT_USERNAME` / `REDDIT_PASSWORD`), the posting step refuses and nothing gets marked. The daily run stays read-only unless you pass the flag.
 
 ## Setup (5 minutes)
 
@@ -14,6 +41,7 @@ Once a day, a short list (up to 10) of fresh Reddit posts where a job seeker ask
 2. `copy .env.example .env` (Windows) or `cp .env.example .env`, then fill in:
    - `OPENAI_API_KEY`: from https://platform.openai.com/api-keys, or an OpenRouter key (`sk-or-…`) with `OPENAI_BASE_URL=https://openrouter.ai/api/v1` and an OpenRouter `MODEL` such as `openai/gpt-4o-mini`
    - Email (optional, free): make a https://resend.com account, create an API key and set `RESEND_API_KEY`. Set `DIGEST_TO` to the address you signed up with. Without your own domain, Resend's test sender only delivers to that address.
+   - Your Reddit account cookie (`REDDIT_COOKIE`): the `reddit_session` value from your browser's DevTools (or a cookies.txt export). Needed for the review page's **Post to Reddit** button; put it in `.env`, never in chat and never committed.
 3. Try it:
    - `node scout.mjs --no-ai`: rules only, free. Prints the posts that would go to the AI.
    - `node scout.mjs --dry-run`: one AI call. Prints the digest and saves `digests/<date>-dry-run.html`. Sends no email and remembers nothing.
@@ -46,10 +74,11 @@ node server.mjs
 Open http://127.0.0.1:8787. It shows the newest digest (pick another day in the menu) with every post's draft in a text box.
 
 - **Approve & copy**: copies the text as you edited it, opens the thread in a new tab and records the post as answered. Paste it in Reddit's comment box and press Reply.
+- **Post to Reddit**: sends the comment as you edited it through Reddit's API from your own account (your cookie in `REDDIT_COOKIE`), verifies it went up, opens the thread and marks the post as posted. Nothing is recorded if Reddit refuses.
 - **Skip**: records the post so the scout never shows it again.
 - **Undo**: clears a decision made by mistake.
 
-The page never posts to Reddit: it has no Reddit login. Replies go out from your own browser session, typed or pasted by you. A post can be approved only once (`data/replied.json`), and the scout leaves out every post in that file.
+The page posts through your own Reddit account only when you press **Post to Reddit** (`REDDIT_COOKIE` in `.env`); **Approve & copy** is the by-hand route. A post can be answered or posted only once (`data/replied.json`), and the scout leaves out every post in that file.
 
 On a VPS, set `HOST=0.0.0.0` and `DIGEST_PASSWORD` in `.env` (the server refuses to start on the network without it), and prefer HTTPS in front of it.
 
@@ -78,7 +107,7 @@ The AI instructions are `SYSTEM` in `scout.mjs`.
 ## Reddit's rules
 
 - It reads Reddit's public RSS feeds at under 30 requests a day, one at a time, with an honest User-Agent (`script:reddit-scout:0.1`) and no personal data. It stores only post ids, for 30 days.
-- Replies are posted by a person, by hand: the review page copies the text and opens the thread, nothing more. Many subreddits ban self-promotion or limit it (a common rule of thumb: at most 1 in 10 of your posts about your own product). Read each subreddit's rules, and keep the disclosure in the scanner line.
+- Replies are posted by you, by hand from the thread or with one click via the review page's **Post to Reddit** (your cookie in `REDDIT_COOKIE`, your account, through Reddit's API). Many subreddits ban self-promotion or limit it (a common rule of thumb: at most 1 in 10 of your posts about your own product). Read each subreddit's rules, and keep the disclosure in the scanner line.
 - If Reddit ever refuses the RSS (`HTTP 403` in `scout.log`), the allowed route is the official API. Register a "script" app at https://www.reddit.com/prefs/apps (you get a client id and a secret; no password is needed for read-only app access) and read through OAuth under Reddit's Data API terms. That would need a small change to `createReader()`.
 
 ## Files

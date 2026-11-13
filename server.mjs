@@ -2,6 +2,7 @@
 import http from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { loadEnv, listDays, readDay, readReplied, decide, undo } from './commenter.mjs'
+import { redditCookie, postComment } from './poster.mjs'
 
 loadEnv()
 const PORT = Number(process.env.PORT || 8787)
@@ -34,6 +35,7 @@ function page(day, digest, replied) {
   <textarea rows="9" ${done ? 'disabled' : ''}>${esc(done?.text ?? it.draft)}</textarea>
   <div class="row">
     <button class="approve" ${done ? 'disabled' : ''}>Approve &amp; copy</button>
+    <button class="post" ${done ? 'disabled' : ''}>Post to Reddit</button>
     <button class="skip" ${done ? 'disabled' : ''}>Skip</button>
     <span class="status">${done ? `${esc(done.status)} ${esc(done.at.slice(0, 16).replace('T', ' '))} UTC · <a href="#" class="undo">Undo</a>` : ''}</span>
   </div>
@@ -61,12 +63,13 @@ textarea{box-sizing:border-box;width:100%;background:var(--soft);border:1px soli
 button{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:6px 14px;cursor:pointer}
 button.approve{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
 button:disabled{opacity:.5;cursor:default}
+button.post{background:#047857;border-color:#047857;color:#fff;font-weight:600}
 .status{font-size:13px;color:var(--muted)}.status.err{color:var(--err)}.status a{color:var(--accent)}
 .note{font-size:13px;color:var(--muted)}
 </style></head><body><main>
 <header><h1>${open} of ${items.length} to answer</h1>
 <select onchange="location.search='?day='+this.value">${days.map(d => `<option${d === day ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></header>
-<p class="note">Edit the reply until it sounds like you. <b>Approve &amp; copy</b> copies it, opens the thread and marks the post answered: paste it in Reddit's comment box and press Reply.</p>
+<p class="note">Edit the reply until it sounds like you. <b>Approve &amp; copy</b> copies it, opens the thread and marks the post answered: paste it in Reddit's comment box and press Reply. Or press <b>Post to Reddit</b>: it sends the comment from your own account (your Reddit cookie in <code>REDDIT_COOKIE</code> in <code>.env</code>) through Reddit's API, verifies it went up, then marks the post answered.</p>
 ${digest ? cards || '<p>No post in this digest.</p>' : '<p>No digest yet: run <code>node scout.mjs</code> (or <code>--dry-run</code>).</p>'}
 </main>
 <script>
@@ -101,6 +104,16 @@ document.addEventListener('click', async e => {
       if (tab) { tab.opener = null; tab.location = card.dataset.url } else window.open(card.dataset.url, '_blank', 'noopener')
       card.classList.add('done')
       setStatus((await copied ? 'Copied. Paste it on Reddit and press Reply.' : 'Approved. Copy the text above by hand.') + ' · <a href="#" class="undo">Undo</a>')
+    } catch (err) { if (tab) tab.close(); lock(false); setStatus(err.message, true) }
+  } else if (e.target.matches('.post')) {
+    if (!textarea.value.trim()) return setStatus('The reply is empty.', true)
+    const tab = window.open('', '_blank')
+    lock(true)
+    try {
+      const json = await call('/api/post', { day: DAY, id: card.dataset.id, text: textarea.value })
+      if (tab) { tab.opener = null; tab.location = card.dataset.url } else window.open(card.dataset.url, '_blank', 'noopener')
+      card.classList.add('done')
+      setStatus('Posted on Reddit ✓ · comment ' + json.commentId + ' · <a href="#" class="undo">Undo</a>')
     } catch (err) { if (tab) tab.close(); lock(false); setStatus(err.message, true) }
   } else if (e.target.matches('.skip')) {
     lock(true)
@@ -149,6 +162,26 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/') {
       const day = url.searchParams.get('day') || listDays()[0] || null
       return send(res, 200, 'text/html; charset=utf-8', page(day, day && readDay(day), readReplied()))
+    }
+    if (req.method === 'POST' && url.pathname === '/api/post') {
+      const origin = req.headers.origin
+      if (origin && new URL(origin).host !== req.headers.host) return sendJson(res, { status: 403, body: { error: 'cross-site request' } })
+      if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return sendJson(res, { status: 415, body: { error: 'send JSON' } })
+      const payload = await readJson(req).catch(e => ({ __error: e.message }))
+      if (payload?.__error || typeof payload !== 'object' || payload === null) return sendJson(res, { status: 400, body: { error: payload?.__error ?? 'bad body' } })
+      if (!/^[a-z0-9]{4,12}$/i.test(payload.id ?? '')) return sendJson(res, { status: 400, body: { error: 'bad post id' } })
+      const text = typeof payload.text === 'string' ? payload.text.replace(/\r/g, '').trim() : ''
+      if (text.length < 2) return sendJson(res, { status: 400, body: { error: 'the reply is empty' } })
+      if (text.length > 10_000) return sendJson(res, { status: 400, body: { error: 'Reddit comments stop at 10,000 characters' } })
+      const cookie = redditCookie()
+      if (!cookie) return sendJson(res, { status: 503, body: { error: 'REDDIT_COOKIE is missing in .env' } })
+      const done = readReplied()[payload.id]
+      if (done) return sendJson(res, { status: 409, body: { error: `already ${done.status} on ${done.at.slice(0, 10)}`, entry: done } })
+      const posted = await postComment({ id: payload.id, text })
+      if (!posted.ok) return sendJson(res, { status: 502, body: { error: `Reddit refused the comment: ${posted.error}` } })
+      const result = await decide({ day: payload.day, id: payload.id, action: 'post', text })
+      if (result.status !== 200) return sendJson(res, { status: result.status, body: result.body })
+      return sendJson(res, { status: 200, body: { ok: true, commentId: posted.commentId, entry: result.body.entry } })
     }
     if (req.method === 'POST' && (url.pathname === '/api/reply' || url.pathname === '/api/undo')) {
       const origin = req.headers.origin
